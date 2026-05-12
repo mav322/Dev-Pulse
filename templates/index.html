@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DevPulse — System Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080c0f;
+      --surface:   #0d1318;
+      --border:    #1a2830;
+      --accent:    #00e5ff;
+      --accent2:   #ff3d71;
+      --accent3:   #39ff14;
+      --warn:      #ffcc00;
+      --text:      #c8d8e0;
+      --dim:       #4a6070;
+      --mono:      'Share Tech Mono', monospace;
+      --sans:      'Rajdhani', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,229,255,0.012) 2px,
+        rgba(0,229,255,0.012) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    /* HEADER */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 36px; height: 36px;
+      border: 2px solid var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      animation: pulse-border 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(0,229,255,0); }
+    }
+
+    .logo-icon svg { width: 20px; height: 20px; fill: var(--accent); }
+
+    .logo-text {
+      font-family: var(--sans);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: #fff;
+      text-transform: uppercase;
+    }
+
+    .logo-text span { color: var(--accent); }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 12px;
+      color: var(--dim);
+    }
+
+    .live-badge {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--accent3);
+      font-size: 11px;
+      letter-spacing: 2px;
+    }
+
+    .live-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent3);
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
+
+    #clock { color: var(--accent); letter-spacing: 2px; }
+
+    /* SYSINFO BAR */
+    .sysbar {
+      display: flex;
+      gap: 32px;
+      padding: 10px 32px;
+      background: #090e12;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--dim);
+      overflow-x: auto;
+    }
+
+    .sysbar-item { white-space: nowrap; }
+    .sysbar-item span { color: var(--text); }
+
+    /* MAIN GRID */
+    main {
+      padding: 28px 32px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: auto auto auto;
+      gap: 20px;
+    }
+
+    /* CARD */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 20px 24px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 100%;
+    }
+
+    .card.cpu::before    { background: var(--accent); }
+    .card.mem::before    { background: var(--accent2); }
+    .card.disk::before   { background: var(--warn); }
+    .card.net::before    { background: var(--accent3); }
+    .card.procs::before  { background: var(--dim); }
+    .card.system::before { background: var(--accent); }
+
+    .card:hover { border-color: #2a3840; }
+
+    .card-label {
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--dim);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    .card-value {
+      font-family: var(--sans);
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 4px;
+      transition: color 0.4s;
+    }
+
+    .card-value .unit { font-size: 18px; font-weight: 400; color: var(--dim); margin-left: 4px; }
+
+    /* GAUGE BAR */
+    .gauge-track {
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      margin: 14px 0 8px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .gauge-fill {
+      height: 100%;
+      transition: width 0.8s cubic-bezier(0.4,0,0.2,1);
+      position: relative;
+    }
+
+    .gauge-fill::after {
+      content: '';
+      position: absolute;
+      right: 0; top: -2px;
+      width: 2px; height: 8px;
+      background: inherit;
+      filter: brightness(2);
+    }
+
+    .cpu .gauge-fill    { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .mem .gauge-fill    { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+    .disk .gauge-fill   { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .net .gauge-fill    { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+
+    .gauge-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--dim);
+    }
+
+    /* CPU CORES */
+    .cores-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .core-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .core-track {
+      width: 100%;
+      height: 40px;
+      background: var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .core-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--accent);
+      opacity: 0.7;
+      transition: height 0.8s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .core-label { font-size: 9px; color: var(--dim); }
+
+    /* SPARKLINE */
+    .sparkline-wrap { margin-top: 14px; }
+    canvas.sparkline { width: 100%; height: 50px; display: block; }
+
+    /* PROCESSES TABLE */
+    .procs { grid-column: span 2; }
+
+    .proc-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .proc-table th {
+      font-size: 10px; letter-spacing: 2px; color: var(--dim);
+      text-align: left; padding: 6px 0; border-bottom: 1px solid var(--border);
+      font-weight: 400;
+    }
+    .proc-table td {
+      font-size: 12px; padding: 8px 0;
+      border-bottom: 1px solid #111b22;
+      transition: color 0.3s;
+    }
+    .proc-table tr:hover td { color: var(--accent); }
+
+    .proc-name { color: var(--text); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .proc-pid { color: var(--dim); }
+    .proc-cpu { color: var(--accent); }
+    .proc-mem { color: var(--accent2); }
+
+    .mini-bar-wrap { width: 80px; display: inline-block; vertical-align: middle; }
+    .mini-bar-track { height: 3px; background: var(--border); }
+    .mini-bar-fill { height: 100%; background: var(--accent); transition: width 0.6s; }
+
+    /* SYSTEM INFO */
+    .sys-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    .sys-item { }
+    .sys-key { font-size: 10px; color: var(--dim); letter-spacing: 2px; margin-bottom: 3px; }
+    .sys-val { font-size: 13px; color: var(--text); }
+
+    /* NETWORK */
+    .net-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .net-row:last-child { border: none; }
+    .net-label { color: var(--dim); letter-spacing: 1px; font-size: 11px; }
+    .net-val { color: var(--accent3); }
+
+    /* STATUS CORNER */
+    .status-corner {
+      position: absolute; top: 12px; right: 16px;
+      font-size: 9px; color: var(--dim); letter-spacing: 1px;
+    }
+
+    /* ALERT STATE */
+    .alert-high .card-value { color: var(--accent2) !important; }
+    .alert-warn .card-value { color: var(--warn) !important; }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr 1fr; }
+      .procs { grid-column: span 2; }
+    }
+    @media (max-width: 600px) {
+      main { grid-template-columns: 1fr; padding: 16px; }
+      .procs { grid-column: span 1; }
+      header { padding: 14px 16px; }
+      .sysbar { padding: 8px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+    </div>
+    <div class="logo-text">Dev<span>Pulse</span></div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div id="sysname">—</div>
+    <div id="clock">00:00:00</div>
+  </div>
+</header>
+
+<div class="sysbar">
+  <div class="sysbar-item">OS: <span id="sb-os">—</span></div>
+  <div class="sysbar-item">UPTIME: <span id="sb-uptime">—</span></div>
+  <div class="sysbar-item">CPU CORES: <span id="sb-cores">—</span></div>
+  <div class="sysbar-item">TOTAL RAM: <span id="sb-ram">—</span> GB</div>
+  <div class="sysbar-item">TOTAL DISK: <span id="sb-disk">—</span> GB</div>
+  <div class="sysbar-item">PYTHON: <span id="sb-py">—</span></div>
+</div>
+
+<main>
+
+  <!-- CPU -->
+  <div class="card cpu" id="cpu-card">
+    <div class="status-corner" id="cpu-status">NOMINAL</div>
+    <div class="card-label">CPU USAGE</div>
+    <div class="card-value" id="cpu-val">—<span class="unit">%</span></div>
+    <div class="gauge-track"><div class="gauge-fill" id="cpu-bar" style="width:0%"></div></div>
+    <div class="gauge-meta">
+      <span id="cpu-freq">— MHz</span>
+      <span id="cpu-count">— cores</span>
+    </div>
+    <div class="cores-grid" id="cores-grid"></div>
+  </div>
+
+  <!-- MEMORY -->
+  <div class="card mem" id="mem-card">
+    <div class="status-corner" id="mem-status">NOMINAL</div>
+    <div class="card-label">MEMORY</div>
+    <div class="card-value" id="mem-val">—<span class="unit">%</span></div>
+    <div class="gauge-track"><div class="gauge-fill" id="mem-bar" style="width:0%"></div></div>
+    <div class="gauge-meta">
+      <span id="mem-used">—GB used</span>
+      <span id="mem-avail">—GB free</span>
+    </div>
+    <div class="sparkline-wrap">
+      <canvas class="sparkline" id="mem-spark"></canvas>
+    </div>
+  </div>
+
+  <!-- DISK -->
+  <div class="card disk">
+    <div class="card-label">DISK USAGE</div>
+    <div class="card-value" id="disk-val">—<span class="unit">%</span></div>
+    <div class="gauge-track"><div class="gauge-fill" id="disk-bar" style="width:0%"></div></div>
+    <div class="gauge-meta">
+      <span id="disk-used">—GB used</span>
+      <span id="disk-free">—GB free</span>
+    </div>
+  </div>
+
+  <!-- PROCESSES -->
+  <div class="card procs">
+    <div class="card-label">TOP PROCESSES — CPU</div>
+    <table class="proc-table">
+      <thead>
+        <tr>
+          <th>PROCESS</th>
+          <th>PID</th>
+          <th>CPU%</th>
+          <th>MEM%</th>
+          <th style="width:100px">LOAD</th>
+        </tr>
+      </thead>
+      <tbody id="proc-body"></tbody>
+    </table>
+  </div>
+
+  <!-- NETWORK -->
+  <div class="card net">
+    <div class="card-label">NETWORK I/O</div>
+    <div class="net-row">
+      <span class="net-label">↑ SENT</span>
+      <span class="net-val" id="net-sent">— MB</span>
+    </div>
+    <div class="net-row">
+      <span class="net-label">↓ RECEIVED</span>
+      <span class="net-val" id="net-recv">— MB</span>
+    </div>
+    <div class="sparkline-wrap" style="margin-top:16px">
+      <canvas class="sparkline" id="net-spark"></canvas>
+    </div>
+  </div>
+
+  <!-- SYSTEM INFO -->
+  <div class="card system">
+    <div class="card-label">SYSTEM INFO</div>
+    <div class="sys-grid">
+      <div class="sys-item">
+        <div class="sys-key">HOSTNAME</div>
+        <div class="sys-val" id="sys-host">—</div>
+      </div>
+      <div class="sys-item">
+        <div class="sys-key">OS</div>
+        <div class="sys-val" id="sys-os">—</div>
+      </div>
+      <div class="sys-item">
+        <div class="sys-key">UPTIME</div>
+        <div class="sys-val" id="sys-uptime">—</div>
+      </div>
+      <div class="sys-item">
+        <div class="sys-key">PYTHON</div>
+        <div class="sys-val" id="sys-py">—</div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Sparkline history
+  const memHistory = Array(40).fill(0);
+  const netHistory = Array(40).fill(0);
+  let lastRecv = 0;
+
+  function drawSparkline(canvasId, data, color, fillColor) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    const W = canvas.offsetWidth, H = canvas.offsetHeight;
+    const max = Math.max(...data, 1);
+    ctx.clearRect(0, 0, W, H);
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = (i / (data.length - 1)) * W;
+      const y = H - (v / max) * H * 0.9;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Fill
+    ctx.lineTo(W, H); ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+  }
+
+  function setAlert(cardId, statusId, valEl, pct) {
+    const card = document.getElementById(cardId);
+    const status = document.getElementById(statusId);
+    card.classList.remove('alert-high', 'alert-warn');
+    if (pct >= 90) {
+      card.classList.add('alert-high');
+      status.textContent = 'CRITICAL';
+      status.style.color = 'var(--accent2)';
+    } else if (pct >= 70) {
+      card.classList.add('alert-warn');
+      status.textContent = 'WARNING';
+      status.style.color = 'var(--warn)';
+    } else {
+      status.textContent = 'NOMINAL';
+      status.style.color = 'var(--dim)';
+    }
+  }
+
+  async function fetchStats() {
+    try {
+      const res = await fetch('/api/stats');
+      const d = await res.json();
+
+      // Clock
+      document.getElementById('clock').textContent = d.timestamp;
+
+      // Sysbar
+      document.getElementById('sb-os').textContent = d.system.os;
+      document.getElementById('sb-uptime').textContent = d.system.uptime;
+      document.getElementById('sb-cores').textContent = d.cpu.count;
+      document.getElementById('sb-ram').textContent = d.memory.total_gb;
+      document.getElementById('sb-disk').textContent = d.disk.total_gb;
+      document.getElementById('sb-py').textContent = d.system.python;
+      document.getElementById('sysname').textContent = d.system.hostname.toUpperCase();
+
+      // CPU
+      document.getElementById('cpu-val').innerHTML = `${d.cpu.percent}<span class="unit">%</span>`;
+      document.getElementById('cpu-bar').style.width = d.cpu.percent + '%';
+      document.getElementById('cpu-freq').textContent = d.cpu.freq + ' MHz';
+      document.getElementById('cpu-count').textContent = d.cpu.count + ' cores';
+      setAlert('cpu-card', 'cpu-status', null, d.cpu.percent);
+
+      // CPU cores
+      const cg = document.getElementById('cores-grid');
+      cg.innerHTML = '';
+      d.cpu.cores.forEach((p, i) => {
+        cg.innerHTML += `
+          <div class="core-bar">
+            <div class="core-track">
+              <div class="core-fill" style="height:${p}%"></div>
+            </div>
+            <div class="core-label">C${i}</div>
+          </div>`;
+      });
+
+      // Memory
+      document.getElementById('mem-val').innerHTML = `${d.memory.percent}<span class="unit">%</span>`;
+      document.getElementById('mem-bar').style.width = d.memory.percent + '%';
+      document.getElementById('mem-used').textContent = d.memory.used_gb + 'GB used';
+      document.getElementById('mem-avail').textContent = d.memory.available_gb + 'GB free';
+      setAlert('mem-card', 'mem-status', null, d.memory.percent);
+      memHistory.push(d.memory.percent); memHistory.shift();
+      drawSparkline('mem-spark', memHistory, '#ff3d71', 'rgba(255,61,113,0.08)');
+
+      // Disk
+      document.getElementById('disk-val').innerHTML = `${d.disk.percent}<span class="unit">%</span>`;
+      document.getElementById('disk-bar').style.width = d.disk.percent + '%';
+      document.getElementById('disk-used').textContent = d.disk.used_gb + 'GB used';
+      document.getElementById('disk-free').textContent = d.disk.free_gb + 'GB free';
+
+      // Network
+      document.getElementById('net-sent').textContent = d.network.bytes_sent_mb + ' MB';
+      document.getElementById('net-recv').textContent = d.network.bytes_recv_mb + ' MB';
+      const delta = d.network.bytes_recv_mb - lastRecv;
+      lastRecv = d.network.bytes_recv_mb;
+      netHistory.push(Math.max(delta, 0)); netHistory.shift();
+      drawSparkline('net-spark', netHistory, '#39ff14', 'rgba(57,255,20,0.06)');
+
+      // System info
+      document.getElementById('sys-host').textContent = d.system.hostname;
+      document.getElementById('sys-os').textContent = d.system.os;
+      document.getElementById('sys-uptime').textContent = d.system.uptime;
+      document.getElementById('sys-py').textContent = 'v' + d.system.python;
+
+      // Processes
+      const tbody = document.getElementById('proc-body');
+      tbody.innerHTML = '';
+      d.processes.forEach(p => {
+        tbody.innerHTML += `
+          <tr>
+            <td class="proc-name">${p.name}</td>
+            <td class="proc-pid">${p.pid}</td>
+            <td class="proc-cpu">${p.cpu}%</td>
+            <td class="proc-mem">${p.mem}%</td>
+            <td>
+              <div class="mini-bar-wrap">
+                <div class="mini-bar-track">
+                  <div class="mini-bar-fill" style="width:${Math.min(p.cpu*2,100)}%"></div>
+                </div>
+              </div>
+            </td>
+          </tr>`;
+      });
+
+    } catch(e) {
+      console.error('Fetch error:', e);
+    }
+  }
+
+  // Clock tick
+  setInterval(() => {
+    const now = new Date();
+    document.getElementById('clock').textContent =
+      now.toTimeString().split(' ')[0];
+  }, 1000);
+
+  fetchStats();
+  setInterval(fetchStats, 2000);
+</script>
+</body>
+</html>
